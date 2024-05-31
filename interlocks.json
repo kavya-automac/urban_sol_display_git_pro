@@ -1,0 +1,20 @@
+{
+    "door_open": false,
+    "total_cycle_time": 1000,
+    "motor_fwd_time": 20,
+    "fwd_wait_time": 5,
+    "motor_rev_time": 10,
+    "rev_wait_time": 5,
+    "wait_time_in_cycles": 5,
+    "blower": 6,
+    "compost_out_time": 10,
+    "temp_lower_limit": 10,
+    "temp_upper_limit": 10,
+    "no_of_cycles": 5,
+    "heater_temp_cut_off": 10,
+    "overload_current_time": 10,
+    "delay_time_for_crusher_start": 10,
+    "delay_time_for_crusher_rev": 10,
+    "crusher_freq": 10,
+    "Cycle_stop": false
+}

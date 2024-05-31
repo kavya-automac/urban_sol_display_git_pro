@@ -1,0 +1,21 @@
+{
+  "inputs": {
+          "MMtrip": 1024,
+          "BMT": 1025,
+          "DoorOpen":1026,
+          "SppOk":1027,
+          "Eswitch": 1028
+  },
+
+  "outputs": {
+        "MMF": 1280,
+        "MMR": 1281,
+        "Blower_Motor": 1282,
+        "Heater": 1283,
+        "Acr": 1284
+
+    }
+}
+
+
+
