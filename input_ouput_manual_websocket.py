@@ -22,7 +22,7 @@ json_data = load_json(json_file_path)
 
 #modbus rtu connection
 try:
-    client = ModbusClient.ModbusSerialClient(type='rtu',port='COM7',parity='E',baudrate=9600, stopbits=1, bytesize=8)
+    client = ModbusClient.ModbusSerialClient(type='rtu',port='COM6',parity='E',baudrate=9600, stopbits=1, bytesize=8)
     con = client.connect()
     print("connectedd",con)
 except Exception as e:
@@ -97,7 +97,7 @@ async def send_data(websocket, path):
         except websockets.exceptions.ConnectionClosed:  # disconnect line
             print("Client disconnected")
 
-    elif query_params['screen'][0]=="screen2":
+    elif query_params['screen'][0]=="Manual":
 
         try:
             while True:
