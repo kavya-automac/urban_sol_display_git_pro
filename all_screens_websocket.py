@@ -12,12 +12,15 @@ from datetime import datetime
 
 
 async def run_modbus_client():
+    try:
 
-    global client
-    client = AsyncModbusSerialClient(method='rtu', port="COM6", baudrate=9600, parity='E', stopbits=1)
-    # client = ModbusClient.ModbusSerialClient(type='rtu', port='COM6', parity='E', baudrate=9600, stopbits=1, bytesize=8)
-    con = await client.connect()
-    print("connectedd", con)
+        global client
+        client = AsyncModbusSerialClient(method='rtu', port="COM6", baudrate=9600, parity='E', stopbits=1)
+        # client = ModbusClient.ModbusSerialClient(type='rtu', port='COM6', parity='E', baudrate=9600, stopbits=1, bytesize=8)
+        con = await client.connect()
+        print("connectedd", con)
+    except Exception as e:
+        print("connection exception",e)
 
 
 
@@ -71,7 +74,7 @@ def interlock_update_json_data(settings_msg_data):
 
 def interlocks_should_pause(json_data):
     return (json_data["door_open"] or
-            json_data["Cycle_stop"] or
+            # json_data["Cycle_stop"] or
             json_data["blower"] > 50 or
             json_data["temp_lower_limit"] > 50)
 
@@ -97,7 +100,10 @@ pause_duration = 0  # To track the total pause duration
 
 async def motor_rev(end_time):
     print('rev beore writing', datetime.now().isoformat())
-    await client.write_coils(1280, [0,1], slave=0x01)
+    try:
+        await client.write_coils(1280, [0,1], slave=0x01)
+    except  Exception as e:
+        print("Exception in motor rev write coils",e)
     # write_single_coil_response =client.write_coils(1280,[0,1] , unit=0x01)
     # write_single_coil_response = client.write_coil(1281, 1, unit=0x01)
     print('rev after writing', datetime.now().isoformat())
@@ -109,6 +115,10 @@ async def motor_rev(end_time):
             print("Stopping motor_rev due to end time")
             break
         json_data = get_interlock_json_data()
+        if json_data.get("Cycle_status") == "Off":
+            print('motor rev stoped break')
+            break
+
         if interlocks_should_pause(json_data):
             pause_start = time.time()
             print("Pausing due to condition in motor rev", datetime.now().isoformat())
@@ -124,7 +134,10 @@ async def motor_rev(end_time):
 
 async def wait_period(wait_time, end_time):
     print('wait beore writing',datetime.now().isoformat())
-    await client.write_coils(1280, [0,0], slave=0x01)
+    try:
+        await client.write_coils(1280, [0,0], slave=0x01)
+    except Exception as e:
+        print('Exception wait period write coils',e)
     print('wait after writing', datetime.now().isoformat())
     global pause_duration
     print(datetime.now().isoformat(), "- > Waiting...")
@@ -134,6 +147,9 @@ async def wait_period(wait_time, end_time):
             print("Stopping wait_period due to end time")
             break
         json_data = get_interlock_json_data()
+        if json_data.get("Cycle_status") == "Off":
+            print('wait period stoped break')
+            break
         if interlocks_should_pause(json_data):
             pause_start = time.time()
             print("Pausing due to condition in wait period",datetime.now().isoformat())
@@ -150,13 +166,19 @@ async def wait_period(wait_time, end_time):
 async def blower_off(delay):
     print("blower  before on",datetime.now().isoformat())
     await asyncio.sleep(delay)
-    await client.write_coil(1282, 0, slave=0x01)
+    try:
+        await client.write_coil(1282, 0, slave=0x01)
+    except Exception as e:
+        print("Exception in blower off ",e)
     print("blower off",datetime.now().isoformat())
 
 
 async def motor_fwd(end_time):
     print('fwd beore writing',datetime.now().isoformat())
-    await client.write_coils(1280, [1,0,1], slave=0x01)
+    try:
+        await client.write_coils(1280, [1,0,1], slave=0x01)
+    except Exception as e:
+        print("Exception in motor fwd write coils",e)
 
     asyncio.create_task(blower_off(blower_time))
 
@@ -169,6 +191,10 @@ async def motor_fwd(end_time):
             print("Stopping motor_fwd due to end time")
             break
         json_data = get_interlock_json_data()
+        if json_data.get("Cycle_status") == "Off":
+            print('motor fwd stoped break')
+            break
+
         if interlocks_should_pause(json_data):
             pause_start = time.time()
             print("Pausing due to condition in motor fwd",datetime.now().isoformat())
@@ -217,14 +243,15 @@ async def get_inputs():
         print('input result', ip_dict)
 
         return ip_dict
-    except:
-        return {
-            "MMtrip": False,
-            "BMT": False,
-            "DoorOpen": False,
-            "SppOk": False,
-            "Eswitch": True
-        }
+    except Exception as e:
+        print("input exception",e)
+        # return {
+        #     "MMtrip": False,
+        #     "BMT": False,
+        #     "DoorOpen": False,
+        #     "SppOk": False,
+        #     "Eswitch": True
+        # }
 
 # reading ouput addresses data
 
@@ -240,14 +267,15 @@ async def get_output():
         # print('op_result',op_dict)
 
         return op_dict
-    except:
-        return {
-            "MMF": True,
-            "MMR": False,
-            "Blower_Motor": True,
-            "Heater": False,
-            "Acr": False
-        }
+    except Exception as e:
+        print("Exception in output",e)
+        # return {
+        #     "MMF": True,
+        #     "MMR": False,
+        #     "Blower_Motor": True,
+        #     "Heater": False,
+        #     "Acr": False
+        # }
 
 
 async def Screens_websocket_main(websocket, path):
@@ -297,15 +325,24 @@ async def Screens_websocket_main(websocket, path):
                     try:
                         if get_key == "MMF" and plc_coil_reg_val == 1 :
                             print('before mmf write',datetime.now().isoformat())
-                            mmf_coil_write= await client.write_coil(1280, plc_coil_reg_val, slave=0x01)
-                            mmf_coil_write= await client.write_coil(1281, 0, slave=0x01)
+                            try:
+                                mmf_coil_write= await client.write_coil(1280, plc_coil_reg_val, slave=0x01)
+                                mmf_coil_write= await client.write_coil(1281, 0, slave=0x01)
+                            except Exception as e:
+                                print("changes done in MMF write",e)
                             print('after mmf write', datetime.now().isoformat())
                         elif get_key == "MMR" and plc_coil_reg_val == 1:
-                            mmf_coil_write = await client.write_coil(1281, plc_coil_reg_val, slave=0x01)
-                            mmf_coil_write = await client.write_coil(1280, 0, slave=0x01)
+                            try:
+                                mmr_coil_write = await client.write_coil(1281, plc_coil_reg_val, slave=0x01)
+                                mmr_coil_write = await client.write_coil(1280, 0, slave=0x01)
+                            except Exception as e:
+                                print("changes done in MMR ",e)
                         else:
                             print('...b....', get_key, datetime.now().isoformat())
-                            out_write = await client.write_coil(plc_coil_reg, plc_coil_reg_val, slave=0x01)
+                            try:
+                                out_write = await client.write_coil(plc_coil_reg, plc_coil_reg_val, slave=0x01)
+                            except Exception as e:
+                                print("Exception in manual any other key changes",e)
                             print('...b....', datetime.now().isoformat())
                             print('out_write', out_write)
                     except Exception as e:
@@ -345,7 +382,7 @@ async def Screens_websocket_main(websocket, path):
             await on_receive(operation_cycle_start)
 
             json_data = get_interlock_json_data()
-            if json_data.get("Cycle_start") == "On":
+            if json_data.get("Cycle_status") == "On":
                 await websocket.send(json.dumps("process_started"))
                 global end_time
                 global pause_duration
@@ -365,9 +402,10 @@ async def Screens_websocket_main(websocket, path):
 
                 # Start the message handling task
                 message_task = asyncio.create_task(handle_messages(websocket))
+                print('messagetask',message_task)
 
                 while time.time() < end_time:
-                    # print('no_of_cycles', no_of_cycles)
+
                     print("in while", datetime.now().isoformat())
 
                     await motor_fwd(end_time)
@@ -385,6 +423,10 @@ async def Screens_websocket_main(websocket, path):
                         print('pause_duration after updation', pause_duration)
                         end_time += pause_duration
                         pause_duration = 0  # Reset pause duration
+                    json_data1 = get_interlock_json_data()  # Refresh JSON data
+                    if json_data1.get("Cycle_status") == "Off":
+                        print('Cycle stop received, breaking out of the loop')
+                        break
 
                     if time.time() >= end_time:
                         print("Cycle end time reached:", end_iso)
@@ -392,7 +434,12 @@ async def Screens_websocket_main(websocket, path):
                         await client.write_coil(1282, 0, slave=0x01)
 
                         break
+                # json_data2 = get_interlock_json_data()
+                # json_data2["Cycle_stop"] = False
+                # interlock_update_json_data(json_data2)
+                
 
+                print('outof the loop 22')
                 # Cancel the message handling task
                 message_task.cancel()
                 try:

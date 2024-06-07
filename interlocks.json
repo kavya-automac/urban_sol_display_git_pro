@@ -16,6 +16,5 @@
     "delay_time_for_crusher_start": 180,
     "delay_time_for_crusher_rev": 180,
     "crusher_freq": 15,
-    "Cycle_stop": false,
-    "Cycle_start": "On"
+    "Cycle_status": "Off"
 }
