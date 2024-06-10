@@ -152,6 +152,7 @@ async def send_data(websocket, path):
 
 if __name__ == "__main__":
     server = websockets.serve(send_data, "192.168.29.144", 8765)
+    print('server',server)
 
     asyncio.get_event_loop().run_until_complete(server)
     asyncio.get_event_loop().run_forever()

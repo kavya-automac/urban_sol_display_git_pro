@@ -1,6 +1,6 @@
 {
     "door_open": false,
-    "total_cycle_time": 300,
+    "total_cycle_time": 600,
     "motor_fwd_time": 10,
     "fwd_wait_time": 5,
     "motor_rev_time": 10,
@@ -16,5 +16,5 @@
     "delay_time_for_crusher_start": 180,
     "delay_time_for_crusher_rev": 180,
     "crusher_freq": 15,
-    "Cycle_status": "Off"
+    "Cycle_status": "On"
 }

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import random
 import tracemalloc
 
 import websockets
@@ -245,13 +246,13 @@ async def get_inputs():
         return ip_dict
     except Exception as e:
         print("input exception",e)
-        # return {
-        #     "MMtrip": False,
-        #     "BMT": False,
-        #     "DoorOpen": False,
-        #     "SppOk": False,
-        #     "Eswitch": True
-        # }
+        return {
+            "MMtrip": False,
+            "BMT": False,
+            "DoorOpen": False,
+            "SppOk": False,
+            "Eswitch": True
+        }
 
 # reading ouput addresses data
 
@@ -297,7 +298,7 @@ async def Screens_websocket_main(websocket, path):
                 await websocket.send(json.dumps(Data))
 
                 # Wait for one second before sending the next message
-                await asyncio.sleep(1)
+                await asyncio.sleep(3)
         except websockets.exceptions.ConnectionClosed:  # disconnect line
             print("Client disconnected")
 
@@ -377,11 +378,16 @@ async def Screens_websocket_main(websocket, path):
             print('e in settings', e)
 
     elif query_params['screen'][0] == "Operations":
+        json_data = get_interlock_json_data()
+        print("json_data", json_data)
+        await websocket.send(json.dumps({"Cycle_status": json_data["Cycle_status"]}))
         try:
             operation_cycle_start = await asyncio.wait_for(websocket.recv(), timeout=3)
             await on_receive(operation_cycle_start)
 
             json_data = get_interlock_json_data()
+            # print("json_data",json_data)
+            # await websocket.send(json.dumps({"Cycle_status":json_data["Cycle_status"]}))
             if json_data.get("Cycle_status") == "On":
                 await websocket.send(json.dumps("process_started"))
                 global end_time
