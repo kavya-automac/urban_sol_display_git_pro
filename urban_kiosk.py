@@ -288,13 +288,14 @@ async def get_inputs(websocket):
         await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
 
         print("input exception",e)
-        # return {
-        #     "MMtrip": False,
-        #     "BMT": False,
-        #     "DoorOpen": False,
-        #     "SppOk": False,
-        #     "Eswitch": True
-        # }
+
+        return {
+            "MMtrip": False,
+            "BMT": False,
+            "DoorOpen": False,
+            "SppOk": False,
+            "Eswitch": True
+        }
 
 # reading ouput addresses data
 
@@ -321,13 +322,13 @@ async def get_output(websocket):
         await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
 
 
-        # return {
-        #     "MMF": True,
-        #     "MMR": False,
-        #     "Blower_Motor": True,
-        #     "Heater": False,
-        #     "Acr": False
-        # }
+        return {
+            "MMF": True,
+            "MMR": False,
+            "Blower_Motor": True,
+            "Heater": False,
+            "Acr": False
+        }
 
 
 
@@ -484,7 +485,7 @@ async def Operations_screen(websocket):
     await websocket.send(json.dumps({"Cycle_status": json_data["Cycle_status"]}))
     try:
 
-        operation_cycle_start = await asyncio.wait_for(websocket.recv(), timeout=3)
+        operation_cycle_start = await asyncio.wait_for(websocket.recv(), timeout=10)
 
         print('operation_cycle_start',operation_cycle_start)
         await on_receive(operation_cycle_start)
@@ -494,6 +495,7 @@ async def Operations_screen(websocket):
         # await websocket.send(json.dumps({"Cycle_status":json_data["Cycle_status"]}))
         if json_data.get("Cycle_status") == "On":
             await websocket.send(json.dumps("process_started"))
+            await websocket.send(json.dumps({"Cycle_status": json_data["Cycle_status"]}))
             global end_time
             global pause_duration
             global cycle_count
@@ -535,7 +537,9 @@ async def Operations_screen(websocket):
                     pause_duration = 0  # Reset pause duration
                 json_data1 = await get_interlock_json_data()  # Refresh JSON data
                 if json_data1.get("Cycle_status") == "Off":
+                    await websocket.send(json.dumps({"Cycle_status": json_data1["Cycle_status"]}))
                     print('Cycle stop received, breaking out of the loop')
+
                     break
 
                 if time.time() >= end_time:
@@ -544,12 +548,16 @@ async def Operations_screen(websocket):
                     await client.write_coil(1282, 0, slave=0x01)
 
                     break
+
             # json_data2 = get_interlock_json_data()
             # json_data2["Cycle_stop"] = False
             # interlock_update_json_data(json_data2)
             pop_ups = False
             await websocket.send(json.dumps({"Pop_up": pop_ups}))
-            print('outof the loop 22')
+            # json_data2 = get_interlock_json_data()
+            # json_data2["Cycle_status"] = "Off"
+            # await interlock_update_json_data(json_data2)
+            # print('outof the loop 22')
             # Cancel the message handling task
             message_task.cancel()
             try:
@@ -576,8 +584,8 @@ async def echo(websocket, path):
 
 
 
-    # except websockets.ConnectionClosed as e:
-    #     logging.error(f"Connection closed: {e.code} - {e.reason}")
+    except websockets.ConnectionClosed as e:
+        logging.error(f"Connection closed: {e.code} - {e.reason}")
     except websockets.InvalidMessage as e:
         logging.error(f"Invalid message received: {e}")
     except websockets.WebSocketTimeout as e:
@@ -588,8 +596,8 @@ async def echo(websocket, path):
 
 async def main():
     try:
-        async with websockets.serve(echo, "localhost", 8765):
-            logging.info("WebSocket server started on ws://localhost:8765")
+        async with websockets.serve(echo, "192.168.29.144", 8765):
+            logging.info("WebSocket server started on ws://192.168.29.144:8765")
             client = None
             print("client in main...", client)
             logging.error(f'client{client}')
