@@ -1,46 +1,65 @@
 import json
 import logging
 import asyncio
-
 import websocket
 import websockets
 import datetime
 from urllib.parse import parse_qs, urlparse
 from pymodbus.client import AsyncModbusSerialClient
 import time
-# read plc addresses and loads the data
 from datetime import datetime
+import logging
+from logging.handlers import TimedRotatingFileHandler
+import os
 
+
+todays_date=datetime.now().date()
+print('todays_date',todays_date)
+# current_script_path = os.path.realpath(__file__)
+current_script_path = os.path.abspath(__file__)
+print('current_script_path',current_script_path)
+
+Base_dir = os.path.dirname(current_script_path)
+print(f"Current script directory: {Base_dir}")
+
+log_directory = os.path.join(Base_dir, 'logs')
+log_filename = 'application_' + str(todays_date) + '.log'
+log_file_path = os.path.join(log_directory, log_filename)
+print('log_file_path:', log_file_path)
+
+# Ensure the log directory exists
+if not os.path.exists(log_directory):
+    os.makedirs(log_directory)
+
+# Create a logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Create a handler that writes log messages to a file, with a new file created every day and files older than 7 days deleted
+handler = TimedRotatingFileHandler(log_file_path, when='midnight', interval=1, backupCount=7)
+handler.setLevel(logging.DEBUG)
+
+# Create a formatter and set it for the handler
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+
+# Add the handler to the logger
+logger.addHandler(handler)
 logging.basicConfig(level=logging.INFO)
 
 
 async def run_modbus_client():
     try:
-
         global client
         client = AsyncModbusSerialClient(method='rtu', port="COM7", baudrate=9600, parity='E', stopbits=1)
         # client = ModbusClient.ModbusSerialClient(type='rtu', port='COM6', parity='E', baudrate=9600, stopbits=1, bytesize=8)
         con = await client.connect()
+        logger.info("In modbus try %s",con)
         print("connectedd", con)
-        # pop_ups = False
-        # await websocket.send(json.dumps({"Pop_up": pop_ups}))
-
     except Exception as e:
-        print("exception in modbus connection",e)
-        # pop_ups = True
-        # await websocket.send(json.dumps({"Pop_up": pop_ups, "message":str(type(e).__name__)}))
+        logger.error(" connection error %s",e)
 
-
-        print("connection exception",e)
-
-
-
-
-
-
-plc_json_file_path = 'plc_registers_addresses.json'
-
-# Function to load JSON data from a file
+plc_json_file_path = Base_dir+'/plc_registers_addresses.json'
 
 
 def plc_address_load_json(file_path):
@@ -48,7 +67,8 @@ def plc_address_load_json(file_path):
         data = json.load(file)
     return data
 
-interlock_json_file_path = 'interlocks.json'
+
+interlock_json_file_path =  Base_dir+'/interlocks.json'
 
 
 def interlock_load_json(file_path):
@@ -56,19 +76,22 @@ def interlock_load_json(file_path):
         data = json.load(file)
     return data
 
+# getting plc addresses
+
 
 plc_json_data = plc_address_load_json(plc_json_file_path)
+
+# all paramters data loads here
 
 
 async def get_interlock_json_data():
     return interlock_load_json(interlock_json_file_path)
 
-
 def interlock_save_json(file_path, data):
     with open(file_path, 'w') as file:
         json.dump(data, file, indent=4)
 
-
+# any changes occurs in interlocks it will update in json file
 
 async def interlock_update_json_data(settings_msg_data):
     json_data = await get_interlock_json_data()
@@ -106,48 +129,46 @@ global pop_ups
 pop_ups=None
 
 async def motor_rev(end_time,websocket):
-    print('rev beore writing', datetime.now().isoformat())
+    logger.info("motor rev before writing into plc %s", datetime.now().isoformat())
     try:
-
         await client.write_coils(1280, [0,1], slave=0x01)
         pop_ups = False
         await websocket.send(json.dumps({"Pop_up": pop_ups}))
     except  Exception as e:
+
         pop_ups = True
         await websocket.send(json.dumps({"Pop_up": pop_ups, "message":str(type(e).__name__)}))
-        print("Exception in motor rev write coils",e)
-    # write_single_coil_response =client.write_coils(1280,[0,1] , unit=0x01)
-    # write_single_coil_response = client.write_coil(1281, 1, unit=0x01)
-    print('rev after writing', datetime.now().isoformat())
+        logger.error("motor rev failed to write into plc  %s", e)
+
+    logger.info("motor rev after writing  %s", datetime.now().isoformat())
     global pause_duration
-    print(datetime.now().isoformat(), "- > Motor running in reverse")
+    logger.info("motor running in reverese  - > %s", datetime.now().isoformat())
     for _ in range(motor_rev_time):
 
         if time.time() >= end_time:
-            print("Stopping motor_rev due to end time")
+            logger.info("stopping motor rev due to end time %s", datetime.now().isoformat())
             break
         json_data = await get_interlock_json_data()
         if json_data.get("Cycle_status") == "Off":
-            print('motor rev stoped break')
+            logger.info("motor rev stopped due to cycle off %s", datetime.now().isoformat())
             break
 
         if interlocks_should_pause(json_data):
             pause_start = time.time()
-            print("Pausing due to condition in motor rev", datetime.now().isoformat())
+            logger.info("motor rev paused due to interlock %s", datetime.now().isoformat())
             while interlocks_should_pause(json_data):
                 await asyncio.sleep(1)
                 json_data = await get_interlock_json_data()
             pause_end = time.time()
             pause_duration += (pause_end - pause_start)
-            print("Resuming motor reverse", datetime.now().isoformat())
+            logger.info("Resuming motor reverse %s", datetime.now().isoformat())
         await asyncio.sleep(1)
-    print(datetime.now().isoformat(), "- > Motor reverse complete")
+    logger.info("Motor rev completed %s", datetime.now().isoformat())
 
 
 async def wait_period(wait_time, end_time,websocket):
-    print('wait beore writing',datetime.now().isoformat())
+    logger.info("wait_period before writing into plc%s", datetime.now().isoformat())
     try:
-
         await client.write_coils(1280, [0,0], slave=0x01)
         pop_ups = False
         await websocket.send(json.dumps({"Pop_up": pop_ups}))
@@ -155,34 +176,38 @@ async def wait_period(wait_time, end_time,websocket):
     except Exception as e:
         pop_ups = True
         await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
-        print('Exception wait period write coils',e)
-    print('wait after writing', datetime.now().isoformat())
+        logger.error("failed to write into plc (wait period)%s", datetime.now().isoformat())
+    logger.info("wait_period After writing into plc %s", datetime.now().isoformat())
     global pause_duration
-    print(datetime.now().isoformat(), "- > Waiting...")
+    logger.info("wait_period After writing into plc %s", datetime.now().isoformat())
+
+
+    logger.info("waiting until wait time %s", datetime.now().isoformat())
     for _ in range(wait_time):
 
         if time.time() >= end_time:
-            print("Stopping wait_period due to end time")
+            logger.info("Stopping wait_period due to end time %s", datetime.now().isoformat())
             break
         json_data = await get_interlock_json_data()
         if json_data.get("Cycle_status") == "Off":
-            print('wait period stoped break')
+            logger.info("Stopping wait_period due to cycle status off %s", datetime.now().isoformat())
             break
         if interlocks_should_pause(json_data):
             pause_start = time.time()
-            print("Pausing due to condition in wait period",datetime.now().isoformat())
+            logger.info("Pausing  wait_period due to  interlock %s", datetime.now().isoformat())
             while interlocks_should_pause(json_data):
                 await asyncio.sleep(1)
                 json_data = await get_interlock_json_data()
             pause_end = time.time()
             pause_duration += (pause_end - pause_start)
-            print("Resuming wait", datetime.now().isoformat())
+            logger.info("Resuming  wait_period  %s", datetime.now().isoformat())
         await asyncio.sleep(1)
-    print(datetime.now().isoformat(), "- > Wait complete")
+    logger.info("Wait complete  %s", datetime.now().isoformat())
 
 
 async def blower_off(delay,websocket):
-    print("blower  before on",datetime.now().isoformat())
+    logger.info("Blower before On  %s", datetime.now().isoformat())
+
     await asyncio.sleep(delay)
     try:
 
@@ -190,14 +215,16 @@ async def blower_off(delay,websocket):
         pop_ups = False
         await websocket.send(json.dumps({"Pop_up": pop_ups}))
     except Exception as e:
-        pop_ups = True
-        await websocket.send(json.dumps({"Pop_up": pop_ups, "message":str(type(e).__name__)}))
-        print("Exception in blower off ",e)
-    print("blower off",datetime.now().isoformat())
+        # pop_ups = True
+        # await websocket.send(json.dumps({"Pop_up": pop_ups, "message":str(type(e).__name__)}))
+        logger.error("Blower failed to write into plc   %s", e)
+
+    logger.error("Blower off  %s", datetime.now().isoformat())
 
 
 async def motor_fwd(end_time,websocket):
-    print('fwd beore writing',datetime.now().isoformat())
+    logger.info("motor forward writing into plc %s", datetime.now().isoformat())
+
     try:
 
         await client.write_coils(1280, [1,0,1], slave=0x01)
@@ -206,35 +233,40 @@ async def motor_fwd(end_time,websocket):
     except Exception as e:
         pop_ups = True
         await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
+        logger.error("motor forward failed to write into plc %s",e)
 
-        print("Exception in motor fwd write coils",e)
-    print("aftervtry exception")
     asyncio.create_task(blower_off(blower_time,websocket))
 
-    print('fwd after writing', datetime.now().isoformat())
+    logger.info("motor forward  after writing into plc %s", datetime.now().isoformat())
     global pause_duration
-    print(datetime.now().isoformat(), "- > Motor running forward")
+    logger.info("motor forward running %s", datetime.now().isoformat())
+
     for _ in range(motor_fwd_time):
 
         if time.time() >= end_time:
-            print("Stopping motor_fwd due to end time")
+            logger.info(" Stopping motor forward due to end time %s", datetime.now().isoformat())
+
             break
         json_data = await get_interlock_json_data()
         if json_data.get("Cycle_status") == "Off":
-            print('motor fwd stoped break')
+            logger.info("motor forward stopped due to cycle off %s", datetime.now().isoformat())
+
             break
 
         if interlocks_should_pause(json_data):
             pause_start = time.time()
-            print("Pausing due to condition in motor fwd",datetime.now().isoformat())
+            logger.info("Pausing motor forward due to interlock %s", datetime.now().isoformat())
+
             while interlocks_should_pause(json_data):
                 await asyncio.sleep(1)
                 json_data = await get_interlock_json_data()
             pause_end = time.time()
             pause_duration += (pause_end - pause_start)
-            print("Resuming motor forward", datetime.now().isoformat())
+            logger.info("Resuming motor forward  %s", datetime.now().isoformat())
+
         await asyncio.sleep(1)
-    print(datetime.now().isoformat(), "- > Motor forward complete")
+    logger.info("motor forward  completed", datetime.now().isoformat())
+
 
 
 
@@ -243,20 +275,20 @@ async def motor_fwd(end_time,websocket):
 
 async def on_receive(message):
     try:
-        print(f"Received message: {message}")
+        logger.info("Received message from websocket %s", message)
+
         settings_msg_data = json.loads(message)
         await interlock_update_json_data(settings_msg_data)
     except Exception as e:
-        # pop_ups = True
-        # await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e)), "Exception": str(e)}))
-
-        print(f"Error processing message: {e}")
+        logger.error("Error processing message from websocket %s", e)
 
 
 async def handle_messages(websocket):
-    print('websocket',websocket)
+    logger.info("handler message from websocket ")
+
     async for message in websocket:
-        print('message',message)
+        logger.info("handler message from websocket %s", message)
+
         await on_receive(message)
 
 
@@ -274,10 +306,9 @@ async def get_inputs(websocket):
         for k, v in input_data.items():
 
             inputs = await client.read_discrete_inputs(v, 1, slave=0x01)
-            # print('inputs',inputs,k,v)
-            # print('inputs bits',inputs.bits)
+
             ip_dict[k] = inputs.bits[0]
-        print('input result', ip_dict)
+        logger.info("input result data")
         pop_ups = False
         await websocket.send(
             json.dumps({"Pop_up": pop_ups}))
@@ -286,16 +317,16 @@ async def get_inputs(websocket):
     except Exception as e:
         pop_ups = True
         await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
-
+        logger.info("input result data failed to load ",e)
         print("input exception",e)
 
-        return {
-            "MMtrip": False,
-            "BMT": False,
-            "DoorOpen": False,
-            "SppOk": False,
-            "Eswitch": True
-        }
+        # return {
+        #     "MMtrip": False,
+        #     "BMT": False,
+        #     "DoorOpen": False,
+        #     "SppOk": False,
+        #     "Eswitch": True
+        # }
 
 # reading ouput addresses data
 
@@ -310,30 +341,30 @@ async def get_output(websocket):
         for k,v in output_data.items():
             outputs = await client.read_coils(v, 1, slave=0x01)
             op_dict[k] = outputs.bits[0]
-        # print('op_result',op_dict)
+        logger.info("output result data ")
         pop_ups = False
         await websocket.send(
             json.dumps({"Pop_up": pop_ups}))
 
         return op_dict
     except Exception as e:
-        print("Exception in output....", e)
+        logger.info("output result data failed to load ", e)
         pop_ups = True
         await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
 
 
-        return {
-            "MMF": True,
-            "MMR": False,
-            "Blower_Motor": True,
-            "Heater": False,
-            "Acr": False
-        }
+        # return {
+        #     "MMF": True,
+        #     "MMR": False,
+        #     "Blower_Motor": True,
+        #     "Heater": False,
+        #     "Acr": False
+        # }
 
 
 
 async def IO_screen(websocket):
-    print("ioscreen")
+    logger.info(" ioscreen  connected ")
     try:
         pop_ups = False
         await websocket.send(
@@ -342,7 +373,7 @@ async def IO_screen(websocket):
             ip_data = await get_inputs(websocket)
             op_data = await get_output(websocket)
             Data = {**ip_data, **op_data}  # merege 2 dicts
-            print('data',Data)
+            logger.info("merge 2 dicts ")
             await websocket.send(json.dumps(Data))
 
             # Wait for one second before sending the next message
@@ -351,11 +382,10 @@ async def IO_screen(websocket):
         pop_ups = True
         await websocket.send(
             json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
-
-        print("Client disconnected")
+        logger.error(" Io Screen Client disconnected")
 
 async def Manual_screen(websocket):
-    print("manual")
+    logger.info("Manual screen connected ")
     try:
         # pop_ups = False
         # await websocket.send(json.dumps({"Pop_up": pop_ups}))
@@ -369,7 +399,7 @@ async def Manual_screen(websocket):
                 # in client data data should be like {"MMT":0} in messages value should be 0 or 1
                 client_data = await asyncio.wait_for(websocket.recv(),
                                                      timeout=3)  # waiting for data(message) from websockets
-                print('client_data', client_data)
+                logger.info("Manual screen client data (message body) %s",client_data)
 
                 #  first keys from json file
                 get_key = list(json.loads(client_data).keys())[0]
@@ -386,7 +416,7 @@ async def Manual_screen(websocket):
 
                 try:
                     if get_key == "MMF" and plc_coil_reg_val == 1:
-                        print('before mmf write', datetime.now().isoformat())
+                        logger.info("Before MMF write into plc %s ",datetime.now().isoformat())
                         try:
 
                             mmf_coil_write = await client.write_coil(1280, plc_coil_reg_val, slave=0x01)
@@ -398,10 +428,12 @@ async def Manual_screen(websocket):
                             pop_ups = True
                             await websocket.send(
                                 json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
+                            logger.error("failed to write MFF data into plc %s ", e)
 
-                            print("changes done in MMF write", e)
-                        print('after mmf write', datetime.now().isoformat())
+                        logger.info("after  MMF write into plc %s ",datetime.now().isoformat())
                     elif get_key == "MMR" and plc_coil_reg_val == 1:
+                        logger.info("Before MMR write into plc %s ",datetime.now().isoformat())
+
                         try:
 
                             mmr_coil_write = await client.write_coil(1281, plc_coil_reg_val, slave=0x01)
@@ -412,10 +444,12 @@ async def Manual_screen(websocket):
                             pop_ups = True
                             await websocket.send(
                                 json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
+                            logger.error("failed to write MMR data into plc %s ", e)
 
-                            print("changes done in MMR ", e)
+
                     else:
-                        print('...b....', get_key, datetime.now().isoformat())
+                        logger.info("Except MMF MMR  writing diff paramters data into plc %s ", datetime.now().isoformat())
+
                         try:
 
                             out_write = await client.write_coil(plc_coil_reg, plc_coil_reg_val, slave=0x01)
@@ -425,38 +459,31 @@ async def Manual_screen(websocket):
                             pop_ups = True
                             await websocket.send(
                                 json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
+                            logger.error("Failed to write diff paramters data into plc %s ",e)
 
-                            print("Exception in manual any other key changes", e)
-                        print('...b....', datetime.now().isoformat())
-                        print('out_write', out_write)
+
+                        logger.info("after writing other parameters %s ", datetime.now().isoformat())
+
                 except Exception as e:
                     pop_ups = True
                     await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
 
                     print("except mmf mmr ", e)
-
-                # try:
-                #     print('...b....',get_key, datetime.now().isoformat())
-                #     out_write = await client.write_coil(plc_coil_reg, plc_coil_reg_val, slave=0x01)
-                #     print('...b....', datetime.now().isoformat())
-                #     print('out_write',out_write)
-                # except Exception as e :
-                #     print('e screen 2',e)
-
+                    logger.error("failed to write paramters data into plc %s ", e)
 
             except Exception as e:
+                logger.error("no data got from websocket msg body %s ",e)
 
-                print("in except")
-                # No data received from the client within the timeout period
     except Exception as e :  # disconnect line
         pop_ups = True
         await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
+        logger.error(" Manual screen disconnected", e)
 
-        print("Client disconnected screen 2")
 
 
 async def Settings_screen(websocket):
-    print("settings",websocket)
+    logger.info(" Settings Screen Connected ")
+
     sending_data = await get_interlock_json_data()
     await websocket.send(json.dumps(sending_data))
     # print(await asyncio.wait_for(websocket.recv(), timeout=3))
@@ -465,7 +492,7 @@ async def Settings_screen(websocket):
         print("sssstry")
 
         settings_msg = await asyncio.wait_for(websocket.recv(), timeout=3)
-        # print('settings_msg', settings_msg)
+        logger.info(" Changes done ,got from websocket %s",settings_msg)
         await on_receive(settings_msg)
         sending_data_u = await get_interlock_json_data()
         await websocket.send(json.dumps(sending_data_u))
@@ -475,11 +502,12 @@ async def Settings_screen(websocket):
     except Exception as e:
         # pop_ups = True
         # await websocket.send(json.dumps({"Pop_up": pop_ups, "message":str(type(e).__name__)}))
-
+        logger.error(" Settings Screen Exception %s",e)
         print('e in settings', e)
 
 async def Operations_screen(websocket):
-    print("Operations")
+    logger.info("Operations Screen Connected ")
+
     json_data = await get_interlock_json_data()
     print("json_data", json_data)
     await websocket.send(json.dumps({"Cycle_status": json_data["Cycle_status"]}))
@@ -488,6 +516,8 @@ async def Operations_screen(websocket):
         operation_cycle_start = await asyncio.wait_for(websocket.recv(), timeout=10)
 
         print('operation_cycle_start',operation_cycle_start)
+        logger.info("Cycle status form message body %s ", operation_cycle_start)
+
         await on_receive(operation_cycle_start)
 
         json_data = await get_interlock_json_data()
@@ -508,17 +538,19 @@ async def Operations_screen(websocket):
 
             start_iso = start_datetime.isoformat()
             end_iso = end_datetime.isoformat()
+            logger.info("Start Time (ISO 8601 format) %s ", start_iso)
+            logger.info("End Time (ISO 8601 format)) %s ", end_iso)
 
             print("Start Time (ISO 8601 format):", start_iso)
             print("End Time (ISO 8601 format):", end_iso)
 
             # Start the message handling task
             message_task = asyncio.create_task(handle_messages(websocket))
-            print('messagetask', message_task)
+
 
             while time.time() < end_time:
+                logger.info("cycle starts, in while %s", datetime.now().isoformat())
 
-                print("in while", datetime.now().isoformat())
 
                 await motor_fwd(end_time,websocket)
                 await wait_period(wait_time_fwd, end_time,websocket)
@@ -532,32 +564,36 @@ async def Operations_screen(websocket):
                     cycle_count = 0
 
                 if pause_duration > 0:
+                    logger.info("Pause duration after updation %s", pause_duration)
+
                     print('pause_duration after updation', pause_duration)
                     end_time += pause_duration
                     pause_duration = 0  # Reset pause duration
                 json_data1 = await get_interlock_json_data()  # Refresh JSON data
                 if json_data1.get("Cycle_status") == "Off":
                     await websocket.send(json.dumps({"Cycle_status": json_data1["Cycle_status"]}))
+                    logger.info("Cycle stop received, breaking out of the loop %s", datetime.now().isoformat())
+
                     print('Cycle stop received, breaking out of the loop')
 
                     break
 
                 if time.time() >= end_time:
+                    logger.info("Cycle end time reached %s'", end_iso)
+                    logger.info("Ending process at: %s'", datetime.now().isoformat())
+
                     print("Cycle end time reached:", end_iso)
                     print("Ending process at:", datetime.now().isoformat())
                     await client.write_coil(1282, 0, slave=0x01)
 
                     break
 
-            # json_data2 = get_interlock_json_data()
-            # json_data2["Cycle_stop"] = False
-            # interlock_update_json_data(json_data2)
             pop_ups = False
             await websocket.send(json.dumps({"Pop_up": pop_ups}))
-            # json_data2 = get_interlock_json_data()
-            # json_data2["Cycle_status"] = "Off"
-            # await interlock_update_json_data(json_data2)
-            # print('outof the loop 22')
+
+            print('outof the loop 22')
+            logger.info("outof the loop 22 %s", datetime.now().isoformat())
+
             # Cancel the message handling task
             message_task.cancel()
             try:
@@ -567,7 +603,10 @@ async def Operations_screen(websocket):
     except Exception as e:
         # pop_ups=True
         # await websocket.send(json.dumps({"Pop_up":pop_ups,"message":str(type(e).__name__)}))
+        logger.info("Exception in operations screen %s", e)
+
         print('e operation',e,",,,,,,,,,,,,,,,," ,type(e))
+
 
 async def echo(websocket, path):
     try:
@@ -585,22 +624,22 @@ async def echo(websocket, path):
 
 
     except websockets.ConnectionClosed as e:
-        logging.error(f"Connection closed: {e.code} - {e.reason}")
+        logger.error(f"Connection closed: {e.code} - {e.reason}")
     except websockets.InvalidMessage as e:
-        logging.error(f"Invalid message received: {e}")
+        logger.error(f"Invalid message received: {e}")
     except websockets.WebSocketTimeout as e:
-        logging.error(f"WebSocket operation timed out: {e}")
+        logger.error(f"WebSocket operation timed out: {e}")
     except Exception as e:
-        logging.error(f"Unexpected error: {e}")
+        logger.error(f"Unexpected error: {e}")
 
 
 async def main():
     try:
         async with websockets.serve(echo, "192.168.29.144", 8765):
-            logging.info("WebSocket server started on ws://192.168.29.144:8765")
+            logger.info("WebSocket server started on ws://192.168.29.144:8765")
             client = None
             print("client in main...", client)
-            logging.error(f'client{client}')
+            logger.error(f'client{client}')
             client = await run_modbus_client()
 
 
@@ -608,21 +647,10 @@ async def main():
 
             await asyncio.Future()  # run forever
     except websockets.WebSocketException as e:
-        logging.error(f"WebSocket server error: {e}")
+        logger.error(f"WebSocket server error: {e}")
     except Exception as e:
-        logging.error(f"Unexpected error during server start: {e}")
+        logger.error(f"Unexpected error during server start: {e}")
 
-
-    # global client
-    # client = None
-    # print("client in main",client)
-    # logging.error(f'client{client}')
-    # try:
-    #     if client is None:
-    #         # print("modbus client connection")
-    #         client = await run_modbus_client()
-    # except Exception as e:
-    #     print("modbus connection eroor",e)
 
 if __name__ == "__main__":
     asyncio.run(main())
