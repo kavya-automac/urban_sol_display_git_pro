@@ -40,7 +40,7 @@ handler = TimedRotatingFileHandler(log_file_path, when='midnight', interval=1, b
 handler.setLevel(logging.DEBUG)
 
 # Create a formatter and set it for the handler
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter('%(asctime)s - %(funcName)s- %(levelname)s - %(message)s')
 handler.setFormatter(formatter)
 
 # Add the handler to the logger
@@ -137,7 +137,8 @@ async def motor_rev(end_time,websocket):
     except  Exception as e:
 
         pop_ups = True
-        await websocket.send(json.dumps({"Pop_up": pop_ups, "message":str(type(e).__name__)}))
+        await websocket.send(json.dumps({"Pop_up": pop_ups, "message":str(type(e).__name__),
+                                         "Time_stamp":datetime.now().isoformat(" ").split(".")[0]}))
         logger.error("motor rev failed to write into plc  %s", e)
 
     logger.info("motor rev after writing  %s", datetime.now().isoformat())
@@ -175,7 +176,9 @@ async def wait_period(wait_time, end_time,websocket):
 
     except Exception as e:
         pop_ups = True
-        await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
+        await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__),
+                                         "Time_stamp": datetime.now().isoformat(" ").split(".")[0]
+                                         }))
         logger.error("failed to write into plc (wait period)%s", datetime.now().isoformat())
     logger.info("wait_period After writing into plc %s", datetime.now().isoformat())
     global pause_duration
@@ -232,7 +235,9 @@ async def motor_fwd(end_time,websocket):
         await websocket.send(json.dumps({"Pop_up": pop_ups}))
     except Exception as e:
         pop_ups = True
-        await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
+        await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__),
+                                         "Time_stamp": datetime.now().isoformat(" ").split(".")[0]
+                                         }))
         logger.error("motor forward failed to write into plc %s",e)
 
     asyncio.create_task(blower_off(blower_time,websocket))
@@ -265,8 +270,14 @@ async def motor_fwd(end_time,websocket):
             logger.info("Resuming motor forward  %s", datetime.now().isoformat())
 
         await asyncio.sleep(1)
-    logger.info("motor forward  completed", datetime.now().isoformat())
+    logger.info("motor forward  completed %s", datetime.now().isoformat())
 
+
+async def all_parameters_off():
+    try:
+        await client.write_coils(1280, [0, 0, 0,0,0], slave=0x01)
+    except Exception as e:
+        logger.error("failed to off all parameters %s", e)
 
 
 
@@ -309,16 +320,23 @@ async def get_inputs(websocket):
 
             ip_dict[k] = inputs.bits[0]
         logger.info("input result data")
+
         pop_ups = False
-        await websocket.send(
-            json.dumps({"Pop_up": pop_ups}))
+        ip_dict.update({"Pop_up": pop_ups})
+        # await websocket.send(
+        #     json.dumps({"Pop_up": pop_ups}))
 
         return ip_dict
     except Exception as e:
         pop_ups = True
-        await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
-        logger.info("input result data failed to load ",e)
+        # await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__),
+        #                                  "Time_stamp": datetime.now().isoformat(" ").split(".")[0]
+        #                                  }))
+        logger.info("input result data failed to load %s ",e)
         print("input exception",e)
+        return {{"Pop_up": pop_ups, "message": str(type(e).__name__),
+                                         "Time_stamp": datetime.now().isoformat(" ").split(".")[0]
+                                         }}
 
         # return {
         #     "MMtrip": False,
@@ -343,16 +361,21 @@ async def get_output(websocket):
             op_dict[k] = outputs.bits[0]
         logger.info("output result data ")
         pop_ups = False
-        await websocket.send(
-            json.dumps({"Pop_up": pop_ups}))
+        op_dict.update({"Pop_up": pop_ups})
+        # await websocket.send(
+        #     json.dumps({"Pop_up": pop_ups}))
 
         return op_dict
     except Exception as e:
-        logger.info("output result data failed to load ", e)
+        logger.info("output result data failed to load %s ", e)
         pop_ups = True
-        await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
+        # await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__),
+        #                                  "Time_stamp": datetime.now().isoformat(" ").split(".")[0]
+        #                                  }))
 
-
+        return {{"Pop_up": pop_ups, "message": str(type(e).__name__),
+                                         "Time_stamp": datetime.now().isoformat(" ").split(".")[0]
+                                         }}
         # return {
         #     "MMF": True,
         #     "MMR": False,
@@ -381,7 +404,8 @@ async def IO_screen(websocket):
     except Exception as e:  # disconnect line
         pop_ups = True
         await websocket.send(
-            json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
+            json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__),
+                        "Time_stamp":datetime.now().isoformat(" ").split(".")[0]}))
         logger.error(" Io Screen Client disconnected")
 
 async def Manual_screen(websocket):
@@ -427,7 +451,9 @@ async def Manual_screen(websocket):
 
                             pop_ups = True
                             await websocket.send(
-                                json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
+                                json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__),
+                                            "Time_stamp": datetime.now().isoformat(" ").split(".")[0]
+                                            }))
                             logger.error("failed to write MFF data into plc %s ", e)
 
                         logger.info("after  MMF write into plc %s ",datetime.now().isoformat())
@@ -443,7 +469,9 @@ async def Manual_screen(websocket):
                         except Exception as e:
                             pop_ups = True
                             await websocket.send(
-                                json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
+                                json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__),
+                                            "Time_stamp": datetime.now().isoformat(" ").split(".")[0]
+                                            }))
                             logger.error("failed to write MMR data into plc %s ", e)
 
 
@@ -458,7 +486,9 @@ async def Manual_screen(websocket):
                         except Exception as e:
                             pop_ups = True
                             await websocket.send(
-                                json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
+                                json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__),
+                                            "Time_stamp": datetime.now().isoformat(" ").split(".")[0]
+                                            }))
                             logger.error("Failed to write diff paramters data into plc %s ",e)
 
 
@@ -466,7 +496,9 @@ async def Manual_screen(websocket):
 
                 except Exception as e:
                     pop_ups = True
-                    await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
+                    await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__),
+                                                     "Time_stamp": datetime.now().isoformat(" ").split(".")[0]
+                                                     }))
 
                     print("except mmf mmr ", e)
                     logger.error("failed to write paramters data into plc %s ", e)
@@ -476,7 +508,9 @@ async def Manual_screen(websocket):
 
     except Exception as e :  # disconnect line
         pop_ups = True
-        await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__)}))
+        await websocket.send(json.dumps({"Pop_up": pop_ups, "message": str(type(e).__name__),
+                                         "Time_stamp": datetime.now().isoformat(" ").split(".")[0]
+                                         }))
         logger.error(" Manual screen disconnected", e)
 
 
@@ -572,6 +606,7 @@ async def Operations_screen(websocket):
                 json_data1 = await get_interlock_json_data()  # Refresh JSON data
                 if json_data1.get("Cycle_status") == "Off":
                     await websocket.send(json.dumps({"Cycle_status": json_data1["Cycle_status"]}))
+                    await all_parameters_off()
                     logger.info("Cycle stop received, breaking out of the loop %s", datetime.now().isoformat())
 
                     print('Cycle stop received, breaking out of the loop')
@@ -584,7 +619,8 @@ async def Operations_screen(websocket):
 
                     print("Cycle end time reached:", end_iso)
                     print("Ending process at:", datetime.now().isoformat())
-                    await client.write_coil(1282, 0, slave=0x01)
+                    await all_parameters_off()
+                    # await client.write_coil(1282, 0, slave=0x01)
 
                     break
 
