@@ -334,9 +334,9 @@ async def get_inputs(websocket):
         #                                  }))
         logger.info("input result data failed to load %s ",e)
         print("input exception",e)
-        return {{"Pop_up": pop_ups, "message": str(type(e).__name__),
+        return {"Pop_up": pop_ups, "message": str(type(e).__name__),
                                          "Time_stamp": datetime.now().isoformat(" ").split(".")[0]
-                                         }}
+                                         }
 
         # return {
         #     "MMtrip": False,
@@ -373,9 +373,9 @@ async def get_output(websocket):
         #                                  "Time_stamp": datetime.now().isoformat(" ").split(".")[0]
         #                                  }))
 
-        return {{"Pop_up": pop_ups, "message": str(type(e).__name__),
+        return {"Pop_up": pop_ups, "message": str(type(e).__name__),
                                          "Time_stamp": datetime.now().isoformat(" ").split(".")[0]
-                                         }}
+                                         }
         # return {
         #     "MMF": True,
         #     "MMR": False,
