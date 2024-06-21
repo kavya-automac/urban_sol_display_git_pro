@@ -1,11 +1,11 @@
 {
     "door_open": false,
-    "total_cycle_time": 600,
+    "total_cycle_time": 0,
     "motor_fwd_time": 10,
     "fwd_wait_time": 5,
     "motor_rev_time": 10,
     "rev_wait_time": 10,
-    "wait_time_in_cycles": 5,
+    "wait_time_in_cycles": 0,
     "blower": 30,
     "compost_out_time": 0,
     "temp_lower_limit": 15,

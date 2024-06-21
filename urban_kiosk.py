@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 # Create a handler that writes log messages to a file, with a new file created every day and files older than 7 days deleted
-handler = TimedRotatingFileHandler(log_file_path, when='midnight', interval=1, backupCount=7)
+handler = TimedRotatingFileHandler(log_file_path, when='midnight', interval=1, backupCount=2)
 handler.setLevel(logging.DEBUG)
 
 # Create a formatter and set it for the handler
@@ -51,7 +51,7 @@ logging.basicConfig(level=logging.INFO)
 async def run_modbus_client():
     try:
         global client
-        client = AsyncModbusSerialClient(method='rtu', port="COM7", baudrate=9600, parity='E', stopbits=1)
+        client = AsyncModbusSerialClient(method='rtu', port="/dev/ttyUSB0", baudrate=9600, parity='E', stopbits=1)
         # client = ModbusClient.ModbusSerialClient(type='rtu', port='COM6', parity='E', baudrate=9600, stopbits=1, bytesize=8)
         con = await client.connect()
         logger.info("In modbus try %s",con)
@@ -415,6 +415,7 @@ async def Manual_screen(websocket):
         # await websocket.send(json.dumps({"Pop_up": pop_ups}))
 
         while True:
+            await asyncio.sleep(0.5)
             screen2_op_data = await get_output(websocket)  # only outputs
             await websocket.send(json.dumps(screen2_op_data))
             # print("after sending")
@@ -422,7 +423,7 @@ async def Manual_screen(websocket):
 
                 # in client data data should be like {"MMT":0} in messages value should be 0 or 1
                 client_data = await asyncio.wait_for(websocket.recv(),
-                                                     timeout=3)  # waiting for data(message) from websockets
+                                                     timeout=1)  # waiting for data(message) from websockets
                 logger.info("Manual screen client data (message body) %s",client_data)
 
                 #  first keys from json file
@@ -512,7 +513,19 @@ async def Manual_screen(websocket):
                                          "Time_stamp": datetime.now().isoformat(" ").split(".")[0]
                                          }))
         logger.error(" Manual screen disconnected", e)
+async def track_timestamp(websocket,start_iso):
+    while True:
+        d1=datetime.fromisoformat(start_iso)
+        d2=datetime.fromisoformat(datetime.now().isoformat())
 
+        timediff = d2 - d1
+        sec =timediff.seconds
+        hours = sec // 3600
+        min = (sec %3600) // 60
+        seconds = sec %60
+
+        print("timeeeeeeeeeeeeeeeeeeeeeeeeeeee",datetime.now().isoformat(),hours,min,seconds)
+        await asyncio.sleep(1)
 
 
 async def Settings_screen(websocket):
@@ -529,9 +542,10 @@ async def Settings_screen(websocket):
         logger.info(" Changes done ,got from websocket %s",settings_msg)
         await on_receive(settings_msg)
         sending_data_u = await get_interlock_json_data()
-        await websocket.send(json.dumps(sending_data_u))
+        # await websocket.send(json.dumps(sending_data_u))
         pop_ups = False
-        await websocket.send(json.dumps({"Pop_up": pop_ups}))
+        sending_data_u.update({"Pop_up": pop_ups})
+        await websocket.send(json.dumps(sending_data_u))
 
     except Exception as e:
         # pop_ups = True
@@ -549,7 +563,8 @@ async def Operations_screen(websocket):
 
         operation_cycle_start = await asyncio.wait_for(websocket.recv(), timeout=10)
 
-        print('operation_cycle_start',operation_cycle_start)
+        print('urban_kiosk.py',operation_cycle_start)
+        await websocket.send(json.dumps(operation_cycle_start))
         logger.info("Cycle status form message body %s ", operation_cycle_start)
 
         await on_receive(operation_cycle_start)
@@ -581,9 +596,12 @@ async def Operations_screen(websocket):
             # Start the message handling task
             message_task = asyncio.create_task(handle_messages(websocket))
 
-
+            timetask = asyncio.create_task(track_timestamp(websocket, start_iso))
             while time.time() < end_time:
+
+
                 logger.info("cycle starts, in while %s", datetime.now().isoformat())
+                print("timestamp............",datetime.now().isoformat())
 
 
                 await motor_fwd(end_time,websocket)
@@ -605,7 +623,8 @@ async def Operations_screen(websocket):
                     pause_duration = 0  # Reset pause duration
                 json_data1 = await get_interlock_json_data()  # Refresh JSON data
                 if json_data1.get("Cycle_status") == "Off":
-                    await websocket.send(json.dumps({"Cycle_status": json_data1["Cycle_status"]}))
+                    timetask.cancel()
+                    await websocket.send(json.dumps({"Cycle_status": "Off"}))
                     await all_parameters_off()
                     logger.info("Cycle stop received, breaking out of the loop %s", datetime.now().isoformat())
 
@@ -614,12 +633,19 @@ async def Operations_screen(websocket):
                     break
 
                 if time.time() >= end_time:
+                    await websocket.send(json.dumps({"Cycle_status": "Off"}))
+                    await interlock_update_json_data({"Cycle_status": "Off"})
+                    #json_data2 = await get_interlock_json_data()
+                    #json_data2["Cycle_status"] = "Off"
+                    #print('json_data2',json_data2)
+                    
                     logger.info("Cycle end time reached %s'", end_iso)
                     logger.info("Ending process at: %s'", datetime.now().isoformat())
 
                     print("Cycle end time reached:", end_iso)
                     print("Ending process at:", datetime.now().isoformat())
                     await all_parameters_off()
+                    timetask.cancel()
                     # await client.write_coil(1282, 0, slave=0x01)
 
                     break
@@ -671,12 +697,14 @@ async def echo(websocket, path):
 
 async def main():
     try:
+        await interlock_update_json_data({"Cycle_status": "Off"})
         async with websockets.serve(echo, "192.168.29.144", 8765):
-            logger.info("WebSocket server started on ws://192.168.29.144:8765")
+            logger.info("WebSocket server started on ws://localhost:8765")
             client = None
             print("client in main...", client)
             logger.error(f'client{client}')
             client = await run_modbus_client()
+            
 
 
 
